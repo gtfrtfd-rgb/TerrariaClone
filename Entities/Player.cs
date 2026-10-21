@@ -16,6 +16,10 @@ public class Player
 
     private bool _isGrounded;
     
+    // Таймеры для отзывчивого прыжка
+    private float _jumpBufferTimer = 0f;
+    private float _coyoteTimer = 0f;
+    
     public Player(float startX, float startY)
     {
         Position = new Vector2(startX, startY);
@@ -44,11 +48,35 @@ public class Player
             if (Math.Abs(Velocity.X) < 0.1f) Velocity = new Vector2(0, Velocity.Y);
         }
 
-        // --- Прыжок ---
-        if (_isGrounded && (Raylib.IsKeyPressed(KeyboardKey.KEY_SPACE) || Raylib.IsKeyPressed(KeyboardKey.KEY_W) || Raylib.IsKeyPressed(KeyboardKey.KEY_UP)))
+        // --- Отзывчивый прыжок (Coyote Time + Jump Buffer) ---
+        
+        // 1. Обновляем Coyote Time (если стоим на земле, таймер полный)
+        if (_isGrounded) 
+        {
+            _coyoteTimer = 0.12f; 
+        }
+        else if (_coyoteTimer > 0) 
+        {
+            _coyoteTimer -= dt;
+        }
+
+        // 2. Обновляем Jump Buffer (запоминаем нажатие)
+        if (Raylib.IsKeyPressed(KeyboardKey.KEY_SPACE) || Raylib.IsKeyPressed(KeyboardKey.KEY_W) || Raylib.IsKeyPressed(KeyboardKey.KEY_UP))
+        {
+            _jumpBufferTimer = 0.12f;
+        }
+        else if (_jumpBufferTimer > 0)
+        {
+            _jumpBufferTimer -= dt;
+        }
+
+        // 3. Выполняем прыжок, если есть и буфер, и время койота
+        if (_jumpBufferTimer > 0 && _coyoteTimer > 0)
         {
             Velocity = new Vector2(Velocity.X, Settings.PlayerJumpSpeed);
             _isGrounded = false;
+            _jumpBufferTimer = 0f;
+            _coyoteTimer = 0f;
         }
 
         // --- Гравитация ---

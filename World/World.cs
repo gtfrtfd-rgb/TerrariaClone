@@ -8,7 +8,6 @@ public class World
 {
     public int Width { get; private set; }
     public int Height { get; private set; }
-    
     public Tile[,] Tiles { get; private set; }
 
     public World(int width, int height)
@@ -29,7 +28,6 @@ public class World
             float h1 = (float)Math.Sin(x * 0.01f) * 30f; 
             float h2 = (float)Math.Sin(x * 0.05f) * 10f; 
             float h3 = (float)Math.Sin(x * 0.2f) * 3f;   
-
             surfaceHeights[x] = baseSurfaceHeight + (int)(h1 + h2 + h3);
         }
 
@@ -40,21 +38,14 @@ public class World
 
             for (int y = 0; y < Height; y++)
             {
-                if (y < surfaceY)
-                    Tiles[x, y] = new Tile(TileType.Air);
-                else if (y == surfaceY)
-                    Tiles[x, y] = new Tile(TileType.Grass);
-                else if (y > surfaceY && y < surfaceY + dirtDepth)
-                    Tiles[x, y] = new Tile(TileType.Dirt);
-                else
-                    Tiles[x, y] = new Tile(TileType.Stone);
+                if (y < surfaceY) Tiles[x, y] = new Tile(TileType.Air);
+                else if (y == surfaceY) Tiles[x, y] = new Tile(TileType.Grass);
+                else if (y > surfaceY && y < surfaceY + dirtDepth) Tiles[x, y] = new Tile(TileType.Dirt);
+                else Tiles[x, y] = new Tile(TileType.Stone);
             }
         }
     }
 
-    /// <summary>
-    /// Возвращает координату Y (в пикселях) поверхности в заданном столбце X (в тайлах).
-    /// </summary>
     public int GetSurfaceY(int tileX)
     {
         if (tileX < 0) tileX = 0;
@@ -62,32 +53,56 @@ public class World
 
         for (int y = 0; y < Height; y++)
         {
-            // Первый твердый блок сверху — это поверхность
-            if (Tiles[tileX, y].IsSolid)
-            {
-                return y * Settings.TileSize;
-            }
+            if (Tiles[tileX, y].IsSolid) return y * Settings.TileSize;
         }
-        return 0; // Если мира нет (пустота), спавним на самом верху
+        return 0;
     }
 
     public Tile GetTile(int x, int y)
     {
-        if (x < 0 || x >= Width || y < 0 || y >= Height)
-            return new Tile(TileType.Air);
-
+        if (x < 0 || x >= Width || y < 0 || y >= Height) return new Tile(TileType.Air);
         return Tiles[x, y];
     }
 
-    public bool IsTileSolid(int x, int y)
+    public bool IsTileSolid(int x, int y) => GetTile(x, y).IsSolid;
+    public bool IsTileAir(int x, int y) => GetTile(x, y).Type == TileType.Air;
+
+    // --- ЛОГИКА ВЗАИМОДЕЙСТВИЯ ---
+
+    public void RemoveTile(int x, int y)
     {
-        return GetTile(x, y).IsSolid;
+        if (x >= 0 && x < Width && y >= 0 && y < Height)
+        {
+            Tiles[x, y] = new Tile(TileType.Air);
+        }
+    }
+
+    /// <summary>
+    /// Проверяет, можно ли поставить блок (свободно ли место и есть ли сосед).
+    /// </summary>
+    public bool CanPlaceTile(int x, int y)
+    {
+        if (x < 0 || x >= Width || y < 0 || y >= Height) return false;
+        if (!IsTileAir(x, y)) return false; // Место занято
+
+        // Блок ставится только рядом с другим твердым блоком
+        return IsTileSolid(x - 1, y) || IsTileSolid(x + 1, y) || 
+               IsTileSolid(x, y - 1) || IsTileSolid(x, y + 1);
+    }
+
+    public bool PlaceTile(int x, int y, TileType type)
+    {
+        if (CanPlaceTile(x, y))
+        {
+            Tiles[x, y] = new Tile(type);
+            return true;
+        }
+        return false;
     }
 
     public void Draw(Camera2D camera)
     {
         int ts = Settings.TileSize;
-        
         int startX = (int)(camera.Target.X - (Settings.ScreenWidth / 2f) / camera.Zoom) / ts - 2;
         int endX = (int)(camera.Target.X + (Settings.ScreenWidth / 2f) / camera.Zoom) / ts + 2;
         int startY = (int)(camera.Target.Y - (Settings.ScreenHeight / 2f) / camera.Zoom) / ts - 2;
@@ -112,7 +127,7 @@ public class World
         }
     }
 
-    private Color GetTileColor(TileType type, int x, int y)
+    public Color GetTileColor(TileType type, int x, int y)
     {
         int hash = (x * 73856093) ^ (y * 19349663);
         int noise = (hash & 0x7FFFFFFF) % 20 - 10; 
