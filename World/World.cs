@@ -21,58 +21,69 @@ public class World
 
     private void GenerateWorld()
     {
-        Random rng = new Random();
         int baseSurfaceHeight = Height / 3;
+        int[] surfaceHeights = new int[Width];
 
         for (int x = 0; x < Width; x++)
         {
-            float noise = (float)Math.Sin(x * 0.05) * 15f + rng.Next(-2, 3);
-            int surfaceY = baseSurfaceHeight + (int)noise;
+            float h1 = (float)Math.Sin(x * 0.01f) * 30f; 
+            float h2 = (float)Math.Sin(x * 0.05f) * 10f; 
+            float h3 = (float)Math.Sin(x * 0.2f) * 3f;   
+
+            surfaceHeights[x] = baseSurfaceHeight + (int)(h1 + h2 + h3);
+        }
+
+        for (int x = 0; x < Width; x++)
+        {
+            int surfaceY = surfaceHeights[x];
+            int dirtDepth = 6 + (int)(Math.Sin(x * 0.03f) * 4f);
 
             for (int y = 0; y < Height; y++)
             {
                 if (y < surfaceY)
-                {
                     Tiles[x, y] = new Tile(TileType.Air);
-                }
                 else if (y == surfaceY)
-                {
                     Tiles[x, y] = new Tile(TileType.Grass);
-                }
-                else if (y > surfaceY && y < surfaceY + rng.Next(4, 8))
-                {
+                else if (y > surfaceY && y < surfaceY + dirtDepth)
                     Tiles[x, y] = new Tile(TileType.Dirt);
-                }
                 else
-                {
                     Tiles[x, y] = new Tile(TileType.Stone);
-                }
             }
         }
     }
 
     /// <summary>
-    /// Возвращает тайл по координатам сетки. Если координаты вне мира, возвращает пустоту (или камень за границей).
+    /// Возвращает координату Y (в пикселях) поверхности в заданном столбце X (в тайлах).
     /// </summary>
+    public int GetSurfaceY(int tileX)
+    {
+        if (tileX < 0) tileX = 0;
+        if (tileX >= Width) tileX = Width - 1;
+
+        for (int y = 0; y < Height; y++)
+        {
+            // Первый твердый блок сверху — это поверхность
+            if (Tiles[tileX, y].IsSolid)
+            {
+                return y * Settings.TileSize;
+            }
+        }
+        return 0; // Если мира нет (пустота), спавним на самом верху
+    }
+
     public Tile GetTile(int x, int y)
     {
         if (x < 0 || x >= Width || y < 0 || y >= Height)
-            return new Tile(TileType.Air); // За пределами мира — пустота
+            return new Tile(TileType.Air);
 
         return Tiles[x, y];
     }
 
-    /// <summary>
-    /// Проверяет, является ли блок в указанных координатах сетки твердым.
-    /// </summary>
     public bool IsTileSolid(int x, int y)
     {
         return GetTile(x, y).IsSolid;
     }
 
-    /// <summary>
-    /// Отрисовка видимых тайлов.
-    /// </summary>
     public void Draw(Camera2D camera)
     {
         int ts = Settings.TileSize;
@@ -103,13 +114,15 @@ public class World
 
     private Color GetTileColor(TileType type, int x, int y)
     {
-        int noise = (x * 7 + y * 13) % 20 - 10; 
+        int hash = (x * 73856093) ^ (y * 19349663);
+        int noise = (hash & 0x7FFFFFFF) % 20 - 10; 
+        static int C(int val) => Math.Clamp(val, 0, 255);
 
         return type switch
         {
-            TileType.Grass  => new Color(80 + noise, 180 + noise, 60 + noise, 255),
-            TileType.Dirt   => new Color(130 + noise, 80 + noise, 40 + noise, 255),
-            TileType.Stone  => new Color(100 + noise, 100 + noise, 100 + noise, 255),
+            TileType.Grass => new Color(C(80 + noise), C(180 + noise), C(60 + noise), 255),
+            TileType.Dirt  => new Color(C(130 + noise), C(80 + noise), C(40 + noise), 255),
+            TileType.Stone => new Color(C(100 + noise), C(100 + noise), C(100 + noise), 255),
             _ => new Color(255, 255, 255, 255)
         };
     }

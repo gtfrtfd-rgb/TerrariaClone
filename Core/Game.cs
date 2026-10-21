@@ -21,13 +21,11 @@ public sealed class Game : IDisposable
     public void Run()
     {
         Init();
-
         while (!Raylib.WindowShouldClose() && _initialized)
         {
             Update();
             Draw();
         }
-
         Shutdown();
     }
 
@@ -40,9 +38,16 @@ public sealed class Game : IDisposable
 
         _world = new World.World(800, 300);
 
-        // Спавним игрока над центром мира
-        float spawnX = _world.Width * Settings.TileSize / 2f;
-        float spawnY = _world.Height * Settings.TileSize / 3f - 100f; // Чуть выше земли
+        // --- УМНЫЙ СПАВН ИГРОКА ---
+        int spawnTileX = _world.Width / 2; // Центр мира по X
+        
+        // Получаем точную высоту (в пикселях) поверхности земли в этой точке
+        int surfacePixelY = _world.GetSurfaceY(spawnTileX);
+        
+        // Ставим игрока на 1 тайл выше поверхности
+        float spawnX = spawnTileX * Settings.TileSize;
+        float spawnY = surfacePixelY - Player.Height - Settings.TileSize; 
+        
         _player = new Player(spawnX, spawnY);
 
         // Камера нацелена на центр игрока
@@ -61,7 +66,6 @@ public sealed class Game : IDisposable
     {
         float dt = Raylib.GetFrameTime();
         
-        // Обновляем FPS
         _fpsTimer += dt;
         _fpsCounter++;
         if (_fpsTimer >= 0.25f)
@@ -71,10 +75,8 @@ public sealed class Game : IDisposable
             _fpsCounter = 0;
         }
 
-        // Обновляем физику игрока
         _player.Update(dt, _world);
 
-        // Плавное следование камеры за игроком (Lerp)
         Vector2 playerCenter = new Vector2(_player.Position.X + Player.Width / 2f, _player.Position.Y + Player.Height / 2f);
         _camera.Target = Vector2.Lerp(_camera.Target, playerCenter, 10f * dt);
     }
@@ -85,14 +87,11 @@ public sealed class Game : IDisposable
         Raylib.ClearBackground(Settings.SkyColor);
 
         Raylib.BeginMode2D(_camera);
-
         _world.Draw(_camera);
         _player.Draw();
-
         Raylib.EndMode2D();
 
         DrawHud();
-
         Raylib.EndDrawing();
     }
 
