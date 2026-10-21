@@ -1,25 +1,23 @@
 using System;
+using System.Numerics;
 using Raylib_cs;
+using TerrariaClone.Entities;
+using TerrariaClone.World;
 
 namespace TerrariaClone.Core;
 
-/// <summary>
-/// Главный менеджер игры. Управляет жизненным циклом, кадрами и передаёт
-/// управление подсистемам (World, Player, Systems), которые мы добавим позже.
-/// </summary>
 public sealed class Game : IDisposable
 {
-    // ---------- Состояние ----------
     private bool  _initialized;
     private bool  _disposed;
-    private float _totalTime;   // общее время с момента запуска (сек)
-    private float _fpsTimer;    // аккумулятор для сглаженного FPS
+    private float _fpsTimer;
     private int   _fpsCounter;
     private int   _displayFps;
 
-    // ---------- Публичный API ----------
+    private World.World _world = null!;
+    private Player _player = null!;
+    private Camera2D _camera;
 
-    /// <summary>Запуск главного цикла игры. Блокирует поток до закрытия окна.</summary>
     public void Run()
     {
         Init();
@@ -33,17 +31,28 @@ public sealed class Game : IDisposable
         Shutdown();
     }
 
-    // ---------- Init / Update / Draw / Shutdown ----------
-
     private void Init()
     {
         Raylib.SetConfigFlags(ConfigFlags.FLAG_VSYNC_HINT | ConfigFlags.FLAG_MSAA_4X_HINT);
         Raylib.InitWindow(Settings.ScreenWidth, Settings.ScreenHeight, Settings.GameTitle);
         Raylib.SetTargetFPS(Settings.TargetFps);
-
-        // В Terraria ESC не закрывает игру, а открывает меню.
-        // Отключаем "выход по ESC", чтобы игрок случайно не вылетал.
         Raylib.SetExitKey(KeyboardKey.KEY_NULL);
+
+        _world = new World.World(800, 300);
+
+        // Спавним игрока над центром мира
+        float spawnX = _world.Width * Settings.TileSize / 2f;
+        float spawnY = _world.Height * Settings.TileSize / 3f - 100f; // Чуть выше земли
+        _player = new Player(spawnX, spawnY);
+
+        // Камера нацелена на центр игрока
+        _camera = new Camera2D
+        {
+            Target = new Vector2(_player.Position.X + Player.Width / 2f, _player.Position.Y + Player.Height / 2f),
+            Offset = new Vector2(Settings.ScreenWidth / 2f, Settings.ScreenHeight / 2f),
+            Zoom = 1.5f,
+            Rotation = 0f
+        };
 
         _initialized = true;
     }
@@ -51,9 +60,8 @@ public sealed class Game : IDisposable
     private void Update()
     {
         float dt = Raylib.GetFrameTime();
-        _totalTime += dt;
-
-        // Сглаженный FPS (обновляется раз в 0.25 сек)
+        
+        // Обновляем FPS
         _fpsTimer += dt;
         _fpsCounter++;
         if (_fpsTimer >= 0.25f)
@@ -63,7 +71,12 @@ public sealed class Game : IDisposable
             _fpsCounter = 0;
         }
 
-        // TODO (следующие шаги): Input, World.Update, Player.Update, Camera.Update
+        // Обновляем физику игрока
+        _player.Update(dt, _world);
+
+        // Плавное следование камеры за игроком (Lerp)
+        Vector2 playerCenter = new Vector2(_player.Position.X + Player.Width / 2f, _player.Position.Y + Player.Height / 2f);
+        _camera.Target = Vector2.Lerp(_camera.Target, playerCenter, 10f * dt);
     }
 
     private void Draw()
@@ -71,61 +84,35 @@ public sealed class Game : IDisposable
         Raylib.BeginDrawing();
         Raylib.ClearBackground(Settings.SkyColor);
 
-        DrawDebugGrid();
-        DrawDebugPlayer();
+        Raylib.BeginMode2D(_camera);
+
+        _world.Draw(_camera);
+        _player.Draw();
+
+        Raylib.EndMode2D();
+
+        DrawHud();
 
         Raylib.EndDrawing();
+    }
+
+    private void DrawHud()
+    {
+        Raylib.DrawRectangle(10, 10, 220, 30, Settings.HudBgColor);
+        Raylib.DrawText($"FPS: {_displayFps}", 20, 18, 14, Settings.HudTextColor);
+        
+        Raylib.DrawRectangle(10, 45, 280, 30, Settings.HudBgColor);
+        Raylib.DrawText($"Pos: X:{_player.Position.X:F0} Y:{_player.Position.Y:F0}", 20, 53, 14, Settings.HudTextColor);
+        
+        Raylib.DrawText("A/D - Move | SPACE/W - Jump", 10, Settings.ScreenHeight - 30, 16, new Color(200, 200, 200, 255));
     }
 
     private void Shutdown()
     {
         if (!_initialized) return;
-
         Raylib.CloseWindow();
         _initialized = false;
     }
-
-    // ---------- Отладочный рендер (временный, до появления World) ----------
-
-    /// <summary>
-    /// Рисует сетку 16×16 px. Помогает сразу проверить масштаб и производительность.
-    /// В Terraria такая сетка скрыта, но при отладке мира — незаменима.
-    /// </summary>
-    private void DrawDebugGrid()
-    {
-        int ts = Settings.TileSize;
-
-        for (int x = 0; x <= Settings.ScreenWidth; x += ts)
-            Raylib.DrawLine(x, 0, x, Settings.ScreenHeight, Settings.GridColor);
-
-        for (int y = 0; y <= Settings.ScreenHeight; y += ts)
-            Raylib.DrawLine(0, y, Settings.ScreenWidth, y, Settings.GridColor);
-    }
-
-    /// <summary>
-    /// Временная «болванка» игрока — прямоугольники в стиле Terraria:
-    /// тело 20×30, голова 14×14, ноги 20×14. Итоговый bbox ~20×44.
-    /// </summary>
-    private void DrawDebugPlayer()
-    {
-        const int playerW = 20;
-        const int playerH = 44;
-        int px = Settings.ScreenWidth  / 2 - playerW / 2;
-        int py = Settings.ScreenHeight / 2 - playerH / 2;
-
-        // Голова
-        Raylib.DrawRectangle(px + 3, py, 14, 14, Settings.PlayerBodyColor);
-        // Рубашка (тело)
-        Raylib.DrawRectangle(px, py + 14, playerW, 18, Settings.PlayerShirtColor);
-        // Ноги
-        Raylib.DrawRectangle(px, py + 32, playerW, 12, Settings.PlayerPantsColor);
-
-        // Отладочная подпись
-        Raylib.DrawText($"Player bbox: {playerW}x{playerH}px", px + playerW + 10, py + 4,
-                        12, Settings.HudTextColor);
-    }
-
-    // ---------- IDisposable ----------
 
     public void Dispose()
     {
